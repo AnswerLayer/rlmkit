@@ -32,6 +32,8 @@ One-shot:
 go run ./cmd/rlmkit -p "Summarize this repository structure." --repo-root .
 ```
 
+Streaming is enabled by default. Disable with `--stream=false`.
+
 ## Safety
 
 By default `run_command` is disabled. Enable it only if you trust the agent and

@@ -86,19 +86,9 @@ type ChatCompletionResponse struct {
 }
 
 func (c *Client) ChatCompletions(ctx context.Context, req ChatCompletionRequest) (Message, string, error) {
-	u := c.baseURL + "/chat/completions"
-	b, err := json.Marshal(req)
+	httpReq, _, err := c.newChatRequest(ctx, req)
 	if err != nil {
 		return Message{}, "", err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(b))
-	if err != nil {
-		return Message{}, "", err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if c.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 
 	resp, err := c.http.Do(httpReq)
@@ -125,6 +115,23 @@ func (c *Client) ChatCompletions(ctx context.Context, req ChatCompletionRequest)
 
 	msg := out.Choices[0].Message
 	return msg, out.Choices[0].FinishReason, nil
+}
+
+func (c *Client) newChatRequest(ctx context.Context, req ChatCompletionRequest) (*http.Request, []byte, error) {
+	u := c.baseURL + "/chat/completions"
+	b, err := json.Marshal(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(b))
+	if err != nil {
+		return nil, nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	return httpReq, b, nil
 }
 
 func ExtractTextContent(msg Message) string {

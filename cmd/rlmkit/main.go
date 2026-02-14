@@ -20,6 +20,12 @@ import (
 	"github.com/answerlayer/rlmkit/internal/tools/core"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 type FileConfig struct {
 	BaseURL            string   `json:"base_url"`
 	APIKey             string   `json:"api_key"`
@@ -30,6 +36,7 @@ type FileConfig struct {
 	MaxIterations      int      `json:"max_iterations"`
 	MaxToolConcurrency int64    `json:"max_tool_concurrency"`
 	ToolTimeoutSec     int      `json:"tool_timeout_sec"`
+	Stream             bool     `json:"stream"`
 	EnableRunCommand   bool     `json:"enable_run_command"`
 	AllowCommandPrefix []string `json:"allow_command_prefix"`
 }
@@ -37,6 +44,10 @@ type FileConfig struct {
 func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "help" || os.Args[1] == "--help" || os.Args[1] == "-h") {
 		usage()
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "version" {
+		fmt.Printf("rlmkit %s (%s) %s\n", version, commit, date)
 		return
 	}
 
@@ -55,6 +66,7 @@ func usage() {
 	fmt.Println("Usage:")
 	fmt.Println("  rlmkit chat [flags]          Interactive chat")
 	fmt.Println("  rlmkit -p \"...\" [flags]      One-shot prompt")
+	fmt.Println("  rlmkit version               Print version info")
 	fmt.Println("")
 	fmt.Println("Common flags:")
 	fmt.Println("  --config <path>              Config file (default ./rlmkit.json if present)")
@@ -64,6 +76,7 @@ func usage() {
 	fmt.Println("  --session-dir <path>         Session storage dir (default ./sessions)")
 	fmt.Println("  --session-id <id>            Resume or pin a session ID")
 	fmt.Println("  --recent-turns <n>           Number of recent turns to include (default 2)")
+	fmt.Println("  --stream                     Stream model output (default true)")
 	fmt.Println("")
 	fmt.Println("Safety flags:")
 	fmt.Println("  --enable-run-command         Enable run_command tool (disabled by default)")
@@ -99,6 +112,7 @@ func runChat(args []string) {
 		sessionDir  = fs.String("session-dir", "", "session dir")
 		sessionID   = fs.String("session-id", "", "session id")
 		recentTurns = fs.Int("recent-turns", 0, "recent turns to include (0 uses config/default)")
+		stream      = fs.Bool("stream", true, "stream model output")
 		enableRun   = fs.Bool("enable-run-command", false, "enable run_command tool")
 		allowPrefix multiStringFlag
 	)
@@ -106,6 +120,7 @@ func runChat(args []string) {
 	_ = fs.Parse(args)
 
 	cfg := resolveConfig(*configPath, *baseURL, *apiKey, *model, *repoRoot, *sessionDir, *recentTurns, *enableRun, allowPrefix)
+	cfg.Stream = *stream
 	sid := *sessionID
 	if sid == "" {
 		sid = newSessionID()
@@ -136,12 +151,31 @@ func runChat(args []string) {
 		}
 
 		ctx := context.Background()
-		res, err := eng.Run(ctx, sid, line)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			continue
+		if cfg.Stream {
+			evCh, errCh := eng.RunStream(ctx, sid, line)
+			for ev := range evCh {
+				switch ev.Type {
+				case agent.EventAssistantDelta:
+					fmt.Print(ev.Text)
+				case agent.EventToolStart:
+					fmt.Fprintf(os.Stderr, "\n[tool] %s\n", ev.ToolName)
+				case agent.EventToolEnd:
+					fmt.Fprintf(os.Stderr, "[tool done] %s\n", ev.ToolName)
+				case agent.EventFinal:
+				}
+			}
+			if err := <-errCh; err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+			}
+			fmt.Println("")
+		} else {
+			res, err := eng.Run(ctx, sid, line)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				continue
+			}
+			fmt.Println(res.Reply)
 		}
-		fmt.Println(res.Reply)
 	}
 }
 
@@ -157,6 +191,7 @@ func runOneShot(args []string) {
 		sessionDir  = fs.String("session-dir", "", "session dir")
 		sessionID   = fs.String("session-id", "", "session id")
 		recentTurns = fs.Int("recent-turns", 0, "recent turns to include (0 uses config/default)")
+		stream      = fs.Bool("stream", true, "stream model output")
 		enableRun   = fs.Bool("enable-run-command", false, "enable run_command tool")
 		allowPrefix multiStringFlag
 	)
@@ -169,6 +204,7 @@ func runOneShot(args []string) {
 	}
 
 	cfg := resolveConfig(*configPath, *baseURL, *apiKey, *model, *repoRoot, *sessionDir, *recentTurns, *enableRun, allowPrefix)
+	cfg.Stream = *stream
 	sid := *sessionID
 	if sid == "" {
 		sid = newSessionID()
@@ -182,12 +218,32 @@ func runOneShot(args []string) {
 	_ = store.EnsureDir()
 
 	ctx := context.Background()
-	res, err := eng.Run(ctx, sid, *prompt)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
+	if cfg.Stream {
+		evCh, errCh := eng.RunStream(ctx, sid, *prompt)
+		for ev := range evCh {
+			switch ev.Type {
+			case agent.EventAssistantDelta:
+				fmt.Print(ev.Text)
+			case agent.EventToolStart:
+				fmt.Fprintf(os.Stderr, "\n[tool] %s\n", ev.ToolName)
+			case agent.EventToolEnd:
+				fmt.Fprintf(os.Stderr, "[tool done] %s\n", ev.ToolName)
+			case agent.EventFinal:
+			}
+		}
+		if err := <-errCh; err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		fmt.Println("")
+	} else {
+		res, err := eng.Run(ctx, sid, *prompt)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		fmt.Println(res.Reply)
 	}
-	fmt.Println(res.Reply)
 }
 
 func resolveConfig(configPath, baseURL, apiKey, model, repoRoot, sessionDir string, recentTurns int, enableRun bool, allowPrefix []string) FileConfig {
@@ -239,6 +295,9 @@ func resolveConfig(configPath, baseURL, apiKey, model, repoRoot, sessionDir stri
 	}
 	if fc.ToolTimeoutSec == 0 {
 		fc.ToolTimeoutSec = 60
+	}
+	if !fc.Stream {
+		fc.Stream = true
 	}
 	if fc.MaxToolConcurrency == 0 {
 		fc.MaxToolConcurrency = 4

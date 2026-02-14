@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/answerlayer/rlmkit/internal/llm/openai"
@@ -58,6 +59,27 @@ type Result struct {
 	SessionID string
 	Reply     string
 	ToolCalls []session.ToolCallRecord
+}
+
+// RunStream runs the agent turn and emits events (assistant deltas, tool start/end, final).
+// The returned error channel will receive at most one error, then close.
+func (e *Engine) RunStream(ctx context.Context, sessionID string, userInput string) (<-chan Event, <-chan error) {
+	events := make(chan Event, 256)
+	errs := make(chan error, 1)
+
+	go func() {
+		defer close(events)
+		defer close(errs)
+
+		res, err := e.runStream(ctx, sessionID, userInput, events)
+		if err != nil {
+			errs <- err
+			return
+		}
+		events <- Event{Type: EventFinal, Text: res.Reply}
+	}()
+
+	return events, errs
 }
 
 func (e *Engine) Run(ctx context.Context, sessionID string, userInput string) (Result, error) {
@@ -144,6 +166,108 @@ func (e *Engine) Run(ctx context.Context, sessionID string, userInput string) (R
 		toolRecords = append(toolRecords, records...)
 
 		// Append tool results back to model.
+		for _, tr := range toolResults {
+			messages = append(messages, tr)
+		}
+	}
+
+	return Result{}, fmt.Errorf("max iterations reached (%d)", e.cfg.MaxIterations)
+}
+
+func (e *Engine) runStream(ctx context.Context, sessionID string, userInput string, events chan<- Event) (Result, error) {
+	if sessionID == "" {
+		return Result{}, errors.New("missing sessionID")
+	}
+	if userInput == "" {
+		return Result{}, errors.New("empty input")
+	}
+
+	messages := []openai.Message{{Role: "system", Content: e.cfg.SystemPrompt}}
+
+	if e.cfg.RecentTurns > 0 {
+		turns, err := e.store.LoadRecentTurns(ctx, sessionID, e.cfg.RecentTurns)
+		if err == nil {
+			for _, t := range turns {
+				if t.UserInput != "" {
+					messages = append(messages, openai.Message{Role: "user", Content: t.UserInput})
+				}
+				if t.Assistant != "" {
+					messages = append(messages, openai.Message{Role: "assistant", Content: t.Assistant})
+				}
+			}
+		}
+	}
+
+	messages = append(messages, openai.Message{Role: "user", Content: userInput})
+	toolDefs := e.buildToolDefs()
+	var toolRecords []session.ToolCallRecord
+
+	var finalReply string
+	for i := 0; i < e.cfg.MaxIterations; i++ {
+		req := openai.ChatCompletionRequest{
+			Model:      e.cfg.Model,
+			Messages:   messages,
+			Tools:      toolDefs,
+			ToolChoice: "auto",
+			Stream:     true,
+		}
+
+		var streamed strings.Builder
+		msg, _, err := e.llm.ChatCompletionsStream(ctx, req, func(ev openai.StreamEvent) {
+			if ev.DeltaText == "" {
+				return
+			}
+			streamed.WriteString(ev.DeltaText)
+			events <- Event{Type: EventAssistantDelta, Text: ev.DeltaText}
+		})
+		if err != nil {
+			return Result{}, err
+		}
+
+		// If server didn't populate msg.Content but we streamed deltas, fill it.
+		if openai.ExtractTextContent(msg) == "" && streamed.Len() > 0 {
+			msg.Content = streamed.String()
+		}
+
+		if len(msg.ToolCalls) == 0 {
+			finalReply = openai.ExtractTextContent(msg)
+			if finalReply == "" {
+				finalReply = "(empty response)"
+			}
+			rec := session.TurnRecord{
+				Type:      "turn",
+				SessionID: sessionID,
+				Timestamp: time.Now(),
+				UserInput: userInput,
+				Assistant: finalReply,
+				ToolCalls: toolRecords,
+			}
+			_ = e.store.AppendTurn(ctx, rec)
+
+			return Result{SessionID: sessionID, Reply: finalReply, ToolCalls: toolRecords}, nil
+		}
+
+		// Append assistant tool call message.
+		messages = append(messages, openai.Message{
+			Role:      "assistant",
+			Content:   openai.ExtractTextContent(msg),
+			ToolCalls: msg.ToolCalls,
+		})
+
+		for _, tc := range msg.ToolCalls {
+			events <- Event{Type: EventToolStart, ToolName: tc.Function.Name}
+		}
+
+		toolResults, records, err := e.execToolCalls(ctx, msg.ToolCalls)
+		if err != nil {
+			return Result{}, err
+		}
+		toolRecords = append(toolRecords, records...)
+
+		for _, r := range records {
+			events <- Event{Type: EventToolEnd, ToolName: r.Name}
+		}
+
 		for _, tr := range toolResults {
 			messages = append(messages, tr)
 		}
