@@ -17,7 +17,13 @@ Prereqs:
 - Go 1.22+
 - A local OpenAI-compatible server backed by MLX (macOS)
 
-See `docs/running-with-mlx.md` for the recommended setup.
+See:
+- `docs/running-with-mlx.md`
+- `docs/architecture.md`
+- `docs/session-format.md`
+- `docs/tools.md`
+- `docs/streaming.md`
+- `docs/releases.md`
 
 Run:
 
