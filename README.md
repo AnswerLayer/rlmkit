@@ -26,6 +26,12 @@ go test ./...
 go run ./cmd/rlmkit chat --repo-root . --base-url http://127.0.0.1:8080/v1 --model <model>
 ```
 
+Coding mode (more opinionated prompt):
+
+```bash
+go run ./cmd/rlmkit code --repo-root . --base-url http://127.0.0.1:8080/v1 --model <model>
+```
+
 One-shot:
 
 ```bash

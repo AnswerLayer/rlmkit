@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/answerlayer/rlmkit/internal/agent"
+	"github.com/answerlayer/rlmkit/internal/coding"
 	"github.com/answerlayer/rlmkit/internal/llm/openai"
 	"github.com/answerlayer/rlmkit/internal/session"
 	"github.com/answerlayer/rlmkit/internal/tools/builtin"
@@ -56,6 +57,10 @@ func main() {
 		runChat(os.Args[2:])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "code" {
+		runCode(os.Args[2:])
+		return
+	}
 
 	runOneShot(os.Args[1:])
 }
@@ -65,6 +70,7 @@ func usage() {
 	fmt.Println("")
 	fmt.Println("Usage:")
 	fmt.Println("  rlmkit chat [flags]          Interactive chat")
+	fmt.Println("  rlmkit code [flags]          Interactive coding mode (more opinionated prompt)")
 	fmt.Println("  rlmkit -p \"...\" [flags]      One-shot prompt")
 	fmt.Println("  rlmkit version               Print version info")
 	fmt.Println("")
@@ -127,6 +133,85 @@ func runChat(args []string) {
 	}
 
 	eng, store, err := buildEngine(cfg, sid)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+	_ = store.EnsureDir()
+
+	fmt.Printf("session: %s\n", sid)
+	fmt.Println("type 'exit' to quit")
+
+	sc := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("> ")
+		if !sc.Scan() {
+			break
+		}
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		if line == "exit" || line == "quit" {
+			break
+		}
+
+		ctx := context.Background()
+		if cfg.Stream {
+			evCh, errCh := eng.RunStream(ctx, sid, line)
+			for ev := range evCh {
+				switch ev.Type {
+				case agent.EventAssistantDelta:
+					fmt.Print(ev.Text)
+				case agent.EventToolStart:
+					fmt.Fprintf(os.Stderr, "\n[tool] %s\n", ev.ToolName)
+				case agent.EventToolEnd:
+					fmt.Fprintf(os.Stderr, "[tool done] %s\n", ev.ToolName)
+				case agent.EventFinal:
+				}
+			}
+			if err := <-errCh; err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+			}
+			fmt.Println("")
+		} else {
+			res, err := eng.Run(ctx, sid, line)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				continue
+			}
+			fmt.Println(res.Reply)
+		}
+	}
+}
+
+func runCode(args []string) {
+	// Same as chat, but uses a coding-oriented system prompt.
+	fs := flag.NewFlagSet("code", flag.ExitOnError)
+	var (
+		configPath  = fs.String("config", "", "config file path (default ./rlmkit.json if present)")
+		baseURL     = fs.String("base-url", "", "OpenAI-compatible base URL")
+		apiKey      = fs.String("api-key", "", "API key (usually empty for local servers)")
+		model       = fs.String("model", "", "model name")
+		repoRoot    = fs.String("repo-root", "", "repo root")
+		sessionDir  = fs.String("session-dir", "", "session dir")
+		sessionID   = fs.String("session-id", "", "session id")
+		recentTurns = fs.Int("recent-turns", 0, "recent turns to include (0 uses config/default)")
+		stream      = fs.Bool("stream", true, "stream model output")
+		enableRun   = fs.Bool("enable-run-command", false, "enable run_command tool")
+		allowPrefix multiStringFlag
+	)
+	fs.Var(&allowPrefix, "allow-cmd-prefix", "allowlisted command prefix (repeatable)")
+	_ = fs.Parse(args)
+
+	cfg := resolveConfig(*configPath, *baseURL, *apiKey, *model, *repoRoot, *sessionDir, *recentTurns, *enableRun, allowPrefix)
+	cfg.Stream = *stream
+	sid := *sessionID
+	if sid == "" {
+		sid = newSessionID()
+	}
+
+	eng, store, err := buildEngineWithPrompt(cfg, sid, "coding")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
@@ -309,6 +394,10 @@ func resolveConfig(configPath, baseURL, apiKey, model, repoRoot, sessionDir stri
 }
 
 func buildEngine(cfg FileConfig, sessionID string) (*agent.Engine, *session.Store, error) {
+	return buildEngineWithPrompt(cfg, sessionID, "default")
+}
+
+func buildEngineWithPrompt(cfg FileConfig, sessionID string, mode string) (*agent.Engine, *session.Store, error) {
 	if cfg.Model == "" {
 		return nil, nil, fmt.Errorf("missing --model (or model in config)")
 	}
@@ -323,10 +412,15 @@ func buildEngine(cfg FileConfig, sessionID string) (*agent.Engine, *session.Stor
 		AllowedCommandPrefix: cfg.AllowCommandPrefix,
 	})
 
+	systemPrompt := agent.DefaultSystemPrompt
+	if mode == "coding" {
+		systemPrompt = coding.SystemPromptCoding
+	}
+
 	llm := openai.NewClient(cfg.BaseURL, cfg.APIKey, 120*time.Second)
 	eng, err := agent.New(llm, tools, store, agent.Config{
 		Model:              cfg.Model,
-		SystemPrompt:       agent.DefaultSystemPrompt,
+		SystemPrompt:       systemPrompt,
 		RecentTurns:        cfg.RecentTurns,
 		MaxIterations:      cfg.MaxIterations,
 		MaxToolConcurrency: cfg.MaxToolConcurrency,
