@@ -17,6 +17,8 @@ Prereqs:
 - Go 1.22+
 - A local OpenAI-compatible server backed by MLX (macOS)
 
+See `docs/running-with-mlx.md` for the recommended setup.
+
 Run:
 
 ```bash
@@ -34,4 +36,3 @@ go run ./cmd/rlmkit -p "Summarize this repository structure." --repo-root .
 
 By default `run_command` is disabled. Enable it only if you trust the agent and
 have configured a strict allowlist.
-
