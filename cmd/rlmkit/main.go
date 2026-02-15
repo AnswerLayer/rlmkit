@@ -77,7 +77,7 @@ func usage() {
 	fmt.Println("Common flags:")
 	fmt.Println("  --config <path>              Config file (default ./rlmkit.json if present)")
 	fmt.Println("  --base-url <url>             OpenAI-compatible base URL (default http://127.0.0.1:8080/v1)")
-	fmt.Println("  --model <name>               Model name (required unless in config)")
+	fmt.Println("  --model <name|auto>          Model name (optional; 'auto' uses /v1/models)")
 	fmt.Println("  --repo-root <path>           Repo root (default current directory)")
 	fmt.Println("  --session-dir <path>         Session storage dir (default ./sessions)")
 	fmt.Println("  --session-id <id>            Resume or pin a session ID")
@@ -398,9 +398,7 @@ func buildEngine(cfg FileConfig, sessionID string) (*agent.Engine, *session.Stor
 }
 
 func buildEngineWithPrompt(cfg FileConfig, sessionID string, mode string) (*agent.Engine, *session.Store, error) {
-	if cfg.Model == "" {
-		return nil, nil, fmt.Errorf("missing --model (or model in config)")
-	}
+	// Model can be omitted; we will auto-select from /v1/models.
 
 	store := session.NewStore(cfg.SessionDir)
 	tools := core.NewRegistry()
@@ -418,8 +416,20 @@ func buildEngineWithPrompt(cfg FileConfig, sessionID string, mode string) (*agen
 	}
 
 	llm := openai.NewClient(cfg.BaseURL, cfg.APIKey, 120*time.Second)
+	model := strings.TrimSpace(cfg.Model)
+	if model == "" || model == "auto" {
+		ids, err := llm.Models(context.Background())
+		if err != nil {
+			return nil, nil, fmt.Errorf("model not provided and failed to auto-detect via %s/models: %w", cfg.BaseURL, err)
+		}
+		if len(ids) == 0 {
+			return nil, nil, fmt.Errorf("no models returned by %s/models", cfg.BaseURL)
+		}
+		model = ids[0]
+		fmt.Fprintf(os.Stderr, "auto-selected model: %s\n", model)
+	}
 	eng, err := agent.New(llm, tools, store, agent.Config{
-		Model:              cfg.Model,
+		Model:              model,
 		SystemPrompt:       systemPrompt,
 		RecentTurns:        cfg.RecentTurns,
 		MaxIterations:      cfg.MaxIterations,
