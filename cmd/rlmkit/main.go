@@ -40,6 +40,11 @@ type FileConfig struct {
 	Stream             bool     `json:"stream"`
 	EnableRunCommand   bool     `json:"enable_run_command"`
 	AllowCommandPrefix []string `json:"allow_command_prefix"`
+	EnableBash         bool     `json:"enable_bash"`
+	AllowBashPrefix    []string `json:"allow_bash_prefix"`
+	EnableHTTPGet      bool     `json:"enable_http_get"`
+	AllowURLPrefix     []string `json:"allow_url_prefix"`
+	EnableDuckDB       bool     `json:"enable_duckdb"`
 }
 
 func main() {
@@ -61,6 +66,10 @@ func main() {
 		runCode(os.Args[2:])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "tools" {
+		runTools(os.Args[2:])
+		return
+	}
 
 	runOneShot(os.Args[1:])
 }
@@ -72,6 +81,7 @@ func usage() {
 	fmt.Println("  rlmkit chat [flags]          Interactive chat")
 	fmt.Println("  rlmkit code [flags]          Interactive coding mode (more opinionated prompt)")
 	fmt.Println("  rlmkit -p \"...\" [flags]      One-shot prompt")
+	fmt.Println("  rlmkit tools [flags]         Print available tools as JSON")
 	fmt.Println("  rlmkit version               Print version info")
 	fmt.Println("")
 	fmt.Println("Common flags:")
@@ -87,6 +97,11 @@ func usage() {
 	fmt.Println("Safety flags:")
 	fmt.Println("  --enable-run-command         Enable run_command tool (disabled by default)")
 	fmt.Println("  --allow-cmd-prefix <s>       Allowlisted command prefix (repeatable)")
+	fmt.Println("  --enable-bash                Enable bash tool (disabled by default)")
+	fmt.Println("  --allow-bash-prefix <s>      Allowlisted bash script prefix (repeatable)")
+	fmt.Println("  --enable-http-get            Enable http_get tool (disabled by default)")
+	fmt.Println("  --allow-url-prefix <s>       Allowlisted URL prefix (repeatable)")
+	fmt.Println("  --enable-duckdb              Enable duckdb_query tool (disabled by default)")
 }
 
 func loadFileConfig(path string) (FileConfig, bool, error) {
@@ -121,12 +136,34 @@ func runChat(args []string) {
 		stream      = fs.Bool("stream", true, "stream model output")
 		enableRun   = fs.Bool("enable-run-command", false, "enable run_command tool")
 		allowPrefix multiStringFlag
+		enableBash  = fs.Bool("enable-bash", false, "enable bash tool")
+		allowBash   multiStringFlag
+		enableHTTP  = fs.Bool("enable-http-get", false, "enable http_get tool")
+		allowURL    multiStringFlag
+		enableDuck  = fs.Bool("enable-duckdb", false, "enable duckdb_query tool")
 	)
 	fs.Var(&allowPrefix, "allow-cmd-prefix", "allowlisted command prefix (repeatable)")
+	fs.Var(&allowBash, "allow-bash-prefix", "allowlisted bash script prefix (repeatable)")
+	fs.Var(&allowURL, "allow-url-prefix", "allowlisted URL prefix (repeatable)")
 	_ = fs.Parse(args)
 
 	cfg := resolveConfig(*configPath, *baseURL, *apiKey, *model, *repoRoot, *sessionDir, *recentTurns, *enableRun, allowPrefix)
 	cfg.Stream = *stream
+	if *enableBash {
+		cfg.EnableBash = true
+	}
+	if len(allowBash) > 0 {
+		cfg.AllowBashPrefix = allowBash
+	}
+	if *enableHTTP {
+		cfg.EnableHTTPGet = true
+	}
+	if len(allowURL) > 0 {
+		cfg.AllowURLPrefix = allowURL
+	}
+	if *enableDuck {
+		cfg.EnableDuckDB = true
+	}
 	sid := *sessionID
 	if sid == "" {
 		sid = newSessionID()
@@ -200,12 +237,34 @@ func runCode(args []string) {
 		stream      = fs.Bool("stream", true, "stream model output")
 		enableRun   = fs.Bool("enable-run-command", false, "enable run_command tool")
 		allowPrefix multiStringFlag
+		enableBash  = fs.Bool("enable-bash", false, "enable bash tool")
+		allowBash   multiStringFlag
+		enableHTTP  = fs.Bool("enable-http-get", false, "enable http_get tool")
+		allowURL    multiStringFlag
+		enableDuck  = fs.Bool("enable-duckdb", false, "enable duckdb_query tool")
 	)
 	fs.Var(&allowPrefix, "allow-cmd-prefix", "allowlisted command prefix (repeatable)")
+	fs.Var(&allowBash, "allow-bash-prefix", "allowlisted bash script prefix (repeatable)")
+	fs.Var(&allowURL, "allow-url-prefix", "allowlisted URL prefix (repeatable)")
 	_ = fs.Parse(args)
 
 	cfg := resolveConfig(*configPath, *baseURL, *apiKey, *model, *repoRoot, *sessionDir, *recentTurns, *enableRun, allowPrefix)
 	cfg.Stream = *stream
+	if *enableBash {
+		cfg.EnableBash = true
+	}
+	if len(allowBash) > 0 {
+		cfg.AllowBashPrefix = allowBash
+	}
+	if *enableHTTP {
+		cfg.EnableHTTPGet = true
+	}
+	if len(allowURL) > 0 {
+		cfg.AllowURLPrefix = allowURL
+	}
+	if *enableDuck {
+		cfg.EnableDuckDB = true
+	}
 	sid := *sessionID
 	if sid == "" {
 		sid = newSessionID()
@@ -279,8 +338,15 @@ func runOneShot(args []string) {
 		stream      = fs.Bool("stream", true, "stream model output")
 		enableRun   = fs.Bool("enable-run-command", false, "enable run_command tool")
 		allowPrefix multiStringFlag
+		enableBash  = fs.Bool("enable-bash", false, "enable bash tool")
+		allowBash   multiStringFlag
+		enableHTTP  = fs.Bool("enable-http-get", false, "enable http_get tool")
+		allowURL    multiStringFlag
+		enableDuck  = fs.Bool("enable-duckdb", false, "enable duckdb_query tool")
 	)
 	fs.Var(&allowPrefix, "allow-cmd-prefix", "allowlisted command prefix (repeatable)")
+	fs.Var(&allowBash, "allow-bash-prefix", "allowlisted bash script prefix (repeatable)")
+	fs.Var(&allowURL, "allow-url-prefix", "allowlisted URL prefix (repeatable)")
 	_ = fs.Parse(args)
 
 	if *prompt == "" {
@@ -290,6 +356,21 @@ func runOneShot(args []string) {
 
 	cfg := resolveConfig(*configPath, *baseURL, *apiKey, *model, *repoRoot, *sessionDir, *recentTurns, *enableRun, allowPrefix)
 	cfg.Stream = *stream
+	if *enableBash {
+		cfg.EnableBash = true
+	}
+	if len(allowBash) > 0 {
+		cfg.AllowBashPrefix = allowBash
+	}
+	if *enableHTTP {
+		cfg.EnableHTTPGet = true
+	}
+	if len(allowURL) > 0 {
+		cfg.AllowURLPrefix = allowURL
+	}
+	if *enableDuck {
+		cfg.EnableDuckDB = true
+	}
 	sid := *sessionID
 	if sid == "" {
 		sid = newSessionID()
@@ -329,6 +410,60 @@ func runOneShot(args []string) {
 		}
 		fmt.Println(res.Reply)
 	}
+}
+
+func runTools(args []string) {
+	fs := flag.NewFlagSet("tools", flag.ExitOnError)
+	var (
+		configPath = fs.String("config", "", "config file path (default ./rlmkit.json if present)")
+		repoRoot   = fs.String("repo-root", "", "repo root")
+		sessionDir = fs.String("session-dir", "", "session dir")
+		enableRun  = fs.Bool("enable-run-command", false, "enable run_command tool")
+		allowCmd   multiStringFlag
+		enableBash = fs.Bool("enable-bash", false, "enable bash tool")
+		allowBash  multiStringFlag
+		enableHTTP = fs.Bool("enable-http-get", false, "enable http_get tool")
+		allowURL   multiStringFlag
+		enableDuck = fs.Bool("enable-duckdb", false, "enable duckdb_query tool")
+	)
+	fs.Var(&allowCmd, "allow-cmd-prefix", "allowlisted command prefix (repeatable)")
+	fs.Var(&allowBash, "allow-bash-prefix", "allowlisted bash script prefix (repeatable)")
+	fs.Var(&allowURL, "allow-url-prefix", "allowlisted URL prefix (repeatable)")
+	_ = fs.Parse(args)
+
+	cfg := resolveConfig(*configPath, "", "", "", *repoRoot, *sessionDir, 0, *enableRun, allowCmd)
+	if *enableBash {
+		cfg.EnableBash = true
+	}
+	if len(allowBash) > 0 {
+		cfg.AllowBashPrefix = allowBash
+	}
+	if *enableHTTP {
+		cfg.EnableHTTPGet = true
+	}
+	if len(allowURL) > 0 {
+		cfg.AllowURLPrefix = allowURL
+	}
+	if *enableDuck {
+		cfg.EnableDuckDB = true
+	}
+
+	tools, _, err := buildTools(cfg, "tools")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+
+	var out []map[string]any
+	for _, t := range tools.All() {
+		out = append(out, map[string]any{
+			"name":        t.Name(),
+			"description": t.Description(),
+			"schema":      t.InputSchema(),
+		})
+	}
+	b, _ := json.MarshalIndent(out, "", "  ")
+	fmt.Println(string(b))
 }
 
 func resolveConfig(configPath, baseURL, apiKey, model, repoRoot, sessionDir string, recentTurns int, enableRun bool, allowPrefix []string) FileConfig {
@@ -398,17 +533,10 @@ func buildEngine(cfg FileConfig, sessionID string) (*agent.Engine, *session.Stor
 }
 
 func buildEngineWithPrompt(cfg FileConfig, sessionID string, mode string) (*agent.Engine, *session.Store, error) {
-	// Model can be omitted; we will auto-select from /v1/models.
-
-	store := session.NewStore(cfg.SessionDir)
-	tools := core.NewRegistry()
-	builtin.RegisterAll(tools, builtin.BuiltinConfig{
-		RepoRoot:             cfg.RepoRoot,
-		SessionStore:         store,
-		SessionID:            sessionID,
-		EnableRunCommand:     cfg.EnableRunCommand,
-		AllowedCommandPrefix: cfg.AllowCommandPrefix,
-	})
+	tools, store, err := buildTools(cfg, sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	systemPrompt := agent.DefaultSystemPrompt
 	if mode == "coding" {
@@ -441,6 +569,47 @@ func buildEngineWithPrompt(cfg FileConfig, sessionID string, mode string) (*agen
 	}
 
 	return eng, store, nil
+}
+
+func buildTools(cfg FileConfig, sessionID string) (*core.Registry, *session.Store, error) {
+	store := session.NewStore(cfg.SessionDir)
+	tools := core.NewRegistry()
+
+	// Use /dev/tty for ask_user to avoid fighting the main stdin scanner.
+	tty, _ := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	var reader *bufio.Reader
+	if tty != nil {
+		reader = bufio.NewReader(tty)
+	}
+	p := builtin.BasicPrompter{
+		In: func() (string, error) {
+			if reader == nil {
+				return "", fmt.Errorf("no tty available for ask_user")
+			}
+			s, err := reader.ReadString('\n')
+			if err != nil {
+				return "", err
+			}
+			return strings.TrimRight(s, "\r\n"), nil
+		},
+		Out: func(s string) { fmt.Fprint(os.Stderr, s) },
+	}
+
+	builtin.RegisterAll(tools, builtin.BuiltinConfig{
+		RepoRoot:             cfg.RepoRoot,
+		SessionStore:         store,
+		SessionID:            sessionID,
+		EnableRunCommand:     cfg.EnableRunCommand,
+		AllowedCommandPrefix: cfg.AllowCommandPrefix,
+		EnableBash:           cfg.EnableBash,
+		AllowedBashPrefix:    cfg.AllowBashPrefix,
+		EnableHTTPGet:        cfg.EnableHTTPGet,
+		AllowedURLPrefix:     cfg.AllowURLPrefix,
+		EnableDuckDB:         cfg.EnableDuckDB,
+		UserPrompter:         p,
+	})
+
+	return tools, store, nil
 }
 
 type multiStringFlag []string

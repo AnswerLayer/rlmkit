@@ -11,6 +11,12 @@ type BuiltinConfig struct {
 	SessionID            string
 	EnableRunCommand     bool
 	AllowedCommandPrefix []string
+	EnableBash           bool
+	AllowedBashPrefix    []string
+	EnableHTTPGet        bool
+	AllowedURLPrefix     []string
+	EnableDuckDB         bool
+	UserPrompter         UserPrompter
 }
 
 func RegisterAll(r *core.Registry, cfg BuiltinConfig) {
@@ -19,6 +25,10 @@ func RegisterAll(r *core.Registry, cfg BuiltinConfig) {
 	r.Register(NewSearchRepoTool(cfg.RepoRoot))
 	r.Register(NewApplyPatchTool(cfg.RepoRoot))
 	r.Register(NewRunCommandTool(cfg.RepoRoot, cfg.EnableRunCommand, cfg.AllowedCommandPrefix))
+	r.Register(NewBashTool(cfg.RepoRoot, cfg.EnableBash, cfg.AllowedBashPrefix))
+	r.Register(NewHTTPGetTool(cfg.EnableHTTPGet, cfg.AllowedURLPrefix))
+	r.Register(NewDuckDBQueryTool(cfg.RepoRoot, cfg.EnableDuckDB))
+	r.Register(NewAskUserTool(cfg.UserPrompter))
 	if cfg.SessionStore != nil && cfg.SessionID != "" {
 		r.Register(NewSessionContextTool(cfg.SessionStore, cfg.SessionID))
 	}

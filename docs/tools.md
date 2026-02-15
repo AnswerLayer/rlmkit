@@ -52,10 +52,52 @@ Safety:
 - Must be enabled (`--enable-run-command` or config).
 - Must match an allowlisted prefix (`--allow-cmd-prefix` or config).
 
+### `bash` (disabled by default)
+Runs a `bash -lc` script under repo root.
+
+Input:
+- `script` (required)
+- `timeout_sec` (optional, default 60)
+
+Safety:
+- Must be enabled (`--enable-bash` or config).
+- Script must match an allowlisted prefix (`--allow-bash-prefix` or config).
+
+### `http_get` (disabled by default)
+Fetches a URL via HTTP GET.
+
+Input:
+- `url` (required)
+- `max_bytes` (optional, default 200000)
+
+Safety:
+- Must be enabled (`--enable-http-get` or config).
+- URL must match an allowlisted prefix (`--allow-url-prefix` or config).
+
+### `duckdb_query` (disabled by default)
+Runs SQL against a local DuckDB file using the `duckdb` CLI.
+
+Input:
+- `database_path` (required, relative to repo root)
+- `sql` (required)
+- `timeout_sec` (optional, default 60)
+- `max_bytes` (optional, default 200000)
+
+Safety:
+- Must be enabled (`--enable-duckdb` or config).
+- Database path is constrained to repo root.
+
+### `ask_user`
+Prompts the user for clarification during an agent run.
+
+Input:
+- `question` (required)
+- `options` (optional)
+- `allow_freeform` (optional, default true)
+
 ### `get_session_context`
 Returns compact summaries of prior turns for the current session (RLM pattern).
 
 Input:
 - `last_n` (optional)
 - `include_tool_calls` (optional)
-
