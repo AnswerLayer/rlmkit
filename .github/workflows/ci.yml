@@ -111,6 +111,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  smoke_release_main:
+    if: github.ref == 'refs/heads/main'
+    needs: [release_main, auto_tag]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.auto_tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release download "${TAG}" -R "${{ github.repository }}" -p "rlmkit_*_linux_amd64.tar.gz" -D /tmp/rlmkit-release
+          tar -xzf /tmp/rlmkit-release/rlmkit_*_linux_amd64.tar.gz -C /tmp/rlmkit-release
+          /tmp/rlmkit-release/rlmkit version | tee /tmp/version.txt
+          grep -q "${TAG#v}" /tmp/version.txt
+
   release_tag:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test]
@@ -129,3 +145,19 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  smoke_release_tag:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release_tag]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release download "${TAG}" -R "${{ github.repository }}" -p "rlmkit_*_linux_amd64.tar.gz" -D /tmp/rlmkit-release
+          tar -xzf /tmp/rlmkit-release/rlmkit_*_linux_amd64.tar.gz -C /tmp/rlmkit-release
+          /tmp/rlmkit-release/rlmkit version | tee /tmp/version.txt
+          grep -q "${TAG#v}" /tmp/version.txt
