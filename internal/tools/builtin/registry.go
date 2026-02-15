@@ -16,6 +16,11 @@ type BuiltinConfig struct {
 	EnableHTTPGet        bool
 	AllowedURLPrefix     []string
 	EnableDuckDB         bool
+	EnableWebSearch      bool
+	WebSearchProvider    string
+	BraveAPIToken        string
+	AllowSearchDomain    []string
+	WebSearchMaxResults  int
 	UserPrompter         UserPrompter
 }
 
@@ -28,6 +33,13 @@ func RegisterAll(r *core.Registry, cfg BuiltinConfig) {
 	r.Register(NewBashTool(cfg.RepoRoot, cfg.EnableBash, cfg.AllowedBashPrefix))
 	r.Register(NewHTTPGetTool(cfg.EnableHTTPGet, cfg.AllowedURLPrefix))
 	r.Register(NewDuckDBQueryTool(cfg.RepoRoot, cfg.EnableDuckDB))
+	r.Register(NewWebSearchTool(
+		cfg.EnableWebSearch,
+		cfg.WebSearchProvider,
+		cfg.BraveAPIToken,
+		cfg.AllowSearchDomain,
+		cfg.WebSearchMaxResults,
+	))
 	r.Register(NewAskUserTool(cfg.UserPrompter))
 	if cfg.SessionStore != nil && cfg.SessionID != "" {
 		r.Register(NewSessionContextTool(cfg.SessionStore, cfg.SessionID))

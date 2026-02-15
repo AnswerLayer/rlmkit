@@ -22,4 +22,5 @@ Rules:
 - Prefer small patches; avoid unrelated refactors.
 - If you are not confident, ask a specific question or inspect more files.
 - If you need user input on a decision, call ask_user.
+- If web_search is enabled and local context is insufficient, use it for targeted lookups.
 `

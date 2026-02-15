@@ -45,6 +45,11 @@ type FileConfig struct {
 	EnableHTTPGet      bool     `json:"enable_http_get"`
 	AllowURLPrefix     []string `json:"allow_url_prefix"`
 	EnableDuckDB       bool     `json:"enable_duckdb"`
+	EnableWebSearch    bool     `json:"enable_web_search"`
+	WebSearchProvider  string   `json:"web_search_provider"`
+	BraveAPIKey        string   `json:"brave_api_key"`
+	AllowSearchDomain  []string `json:"allow_search_domain"`
+	WebSearchMaxResult int      `json:"web_search_max_results"`
 }
 
 func main() {
@@ -102,6 +107,11 @@ func usage() {
 	fmt.Println("  --enable-http-get            Enable http_get tool (disabled by default)")
 	fmt.Println("  --allow-url-prefix <s>       Allowlisted URL prefix (repeatable)")
 	fmt.Println("  --enable-duckdb              Enable duckdb_query tool (disabled by default)")
+	fmt.Println("  --enable-web-search          Enable web_search tool (disabled by default)")
+	fmt.Println("  --web-search-provider <p>    Search provider (default brave)")
+	fmt.Println("  --brave-api-key <key>        Brave API key (or set BRAVE_SEARCH_API_KEY)")
+	fmt.Println("  --allow-search-domain <d>    Allowlisted search domain (repeatable)")
+	fmt.Println("  --web-search-max-results <n> Max search results returned by tool")
 }
 
 func loadFileConfig(path string) (FileConfig, bool, error) {
@@ -141,10 +151,16 @@ func runChat(args []string) {
 		enableHTTP  = fs.Bool("enable-http-get", false, "enable http_get tool")
 		allowURL    multiStringFlag
 		enableDuck  = fs.Bool("enable-duckdb", false, "enable duckdb_query tool")
+		enableWeb   = fs.Bool("enable-web-search", false, "enable web_search tool")
+		webProvider = fs.String("web-search-provider", "", "search provider (default brave)")
+		braveKey    = fs.String("brave-api-key", "", "Brave API key")
+		allowDomain multiStringFlag
+		webMax      = fs.Int("web-search-max-results", 0, "max search results")
 	)
 	fs.Var(&allowPrefix, "allow-cmd-prefix", "allowlisted command prefix (repeatable)")
 	fs.Var(&allowBash, "allow-bash-prefix", "allowlisted bash script prefix (repeatable)")
 	fs.Var(&allowURL, "allow-url-prefix", "allowlisted URL prefix (repeatable)")
+	fs.Var(&allowDomain, "allow-search-domain", "allowlisted search domain (repeatable)")
 	_ = fs.Parse(args)
 
 	cfg := resolveConfig(*configPath, *baseURL, *apiKey, *model, *repoRoot, *sessionDir, *recentTurns, *enableRun, allowPrefix)
@@ -163,6 +179,21 @@ func runChat(args []string) {
 	}
 	if *enableDuck {
 		cfg.EnableDuckDB = true
+	}
+	if *enableWeb {
+		cfg.EnableWebSearch = true
+	}
+	if *webProvider != "" {
+		cfg.WebSearchProvider = *webProvider
+	}
+	if *braveKey != "" {
+		cfg.BraveAPIKey = *braveKey
+	}
+	if len(allowDomain) > 0 {
+		cfg.AllowSearchDomain = allowDomain
+	}
+	if *webMax > 0 {
+		cfg.WebSearchMaxResult = *webMax
 	}
 	sid := *sessionID
 	if sid == "" {
@@ -242,10 +273,16 @@ func runCode(args []string) {
 		enableHTTP  = fs.Bool("enable-http-get", false, "enable http_get tool")
 		allowURL    multiStringFlag
 		enableDuck  = fs.Bool("enable-duckdb", false, "enable duckdb_query tool")
+		enableWeb   = fs.Bool("enable-web-search", false, "enable web_search tool")
+		webProvider = fs.String("web-search-provider", "", "search provider (default brave)")
+		braveKey    = fs.String("brave-api-key", "", "Brave API key")
+		allowDomain multiStringFlag
+		webMax      = fs.Int("web-search-max-results", 0, "max search results")
 	)
 	fs.Var(&allowPrefix, "allow-cmd-prefix", "allowlisted command prefix (repeatable)")
 	fs.Var(&allowBash, "allow-bash-prefix", "allowlisted bash script prefix (repeatable)")
 	fs.Var(&allowURL, "allow-url-prefix", "allowlisted URL prefix (repeatable)")
+	fs.Var(&allowDomain, "allow-search-domain", "allowlisted search domain (repeatable)")
 	_ = fs.Parse(args)
 
 	cfg := resolveConfig(*configPath, *baseURL, *apiKey, *model, *repoRoot, *sessionDir, *recentTurns, *enableRun, allowPrefix)
@@ -264,6 +301,21 @@ func runCode(args []string) {
 	}
 	if *enableDuck {
 		cfg.EnableDuckDB = true
+	}
+	if *enableWeb {
+		cfg.EnableWebSearch = true
+	}
+	if *webProvider != "" {
+		cfg.WebSearchProvider = *webProvider
+	}
+	if *braveKey != "" {
+		cfg.BraveAPIKey = *braveKey
+	}
+	if len(allowDomain) > 0 {
+		cfg.AllowSearchDomain = allowDomain
+	}
+	if *webMax > 0 {
+		cfg.WebSearchMaxResult = *webMax
 	}
 	sid := *sessionID
 	if sid == "" {
@@ -343,10 +395,16 @@ func runOneShot(args []string) {
 		enableHTTP  = fs.Bool("enable-http-get", false, "enable http_get tool")
 		allowURL    multiStringFlag
 		enableDuck  = fs.Bool("enable-duckdb", false, "enable duckdb_query tool")
+		enableWeb   = fs.Bool("enable-web-search", false, "enable web_search tool")
+		webProvider = fs.String("web-search-provider", "", "search provider (default brave)")
+		braveKey    = fs.String("brave-api-key", "", "Brave API key")
+		allowDomain multiStringFlag
+		webMax      = fs.Int("web-search-max-results", 0, "max search results")
 	)
 	fs.Var(&allowPrefix, "allow-cmd-prefix", "allowlisted command prefix (repeatable)")
 	fs.Var(&allowBash, "allow-bash-prefix", "allowlisted bash script prefix (repeatable)")
 	fs.Var(&allowURL, "allow-url-prefix", "allowlisted URL prefix (repeatable)")
+	fs.Var(&allowDomain, "allow-search-domain", "allowlisted search domain (repeatable)")
 	_ = fs.Parse(args)
 
 	if *prompt == "" {
@@ -370,6 +428,21 @@ func runOneShot(args []string) {
 	}
 	if *enableDuck {
 		cfg.EnableDuckDB = true
+	}
+	if *enableWeb {
+		cfg.EnableWebSearch = true
+	}
+	if *webProvider != "" {
+		cfg.WebSearchProvider = *webProvider
+	}
+	if *braveKey != "" {
+		cfg.BraveAPIKey = *braveKey
+	}
+	if len(allowDomain) > 0 {
+		cfg.AllowSearchDomain = allowDomain
+	}
+	if *webMax > 0 {
+		cfg.WebSearchMaxResult = *webMax
 	}
 	sid := *sessionID
 	if sid == "" {
@@ -425,10 +498,16 @@ func runTools(args []string) {
 		enableHTTP = fs.Bool("enable-http-get", false, "enable http_get tool")
 		allowURL   multiStringFlag
 		enableDuck = fs.Bool("enable-duckdb", false, "enable duckdb_query tool")
+		enableWeb  = fs.Bool("enable-web-search", false, "enable web_search tool")
+		webProv    = fs.String("web-search-provider", "", "search provider (default brave)")
+		braveKey   = fs.String("brave-api-key", "", "Brave API key")
+		allowDom   multiStringFlag
+		webMax     = fs.Int("web-search-max-results", 0, "max search results")
 	)
 	fs.Var(&allowCmd, "allow-cmd-prefix", "allowlisted command prefix (repeatable)")
 	fs.Var(&allowBash, "allow-bash-prefix", "allowlisted bash script prefix (repeatable)")
 	fs.Var(&allowURL, "allow-url-prefix", "allowlisted URL prefix (repeatable)")
+	fs.Var(&allowDom, "allow-search-domain", "allowlisted search domain (repeatable)")
 	_ = fs.Parse(args)
 
 	cfg := resolveConfig(*configPath, "", "", "", *repoRoot, *sessionDir, 0, *enableRun, allowCmd)
@@ -446,6 +525,21 @@ func runTools(args []string) {
 	}
 	if *enableDuck {
 		cfg.EnableDuckDB = true
+	}
+	if *enableWeb {
+		cfg.EnableWebSearch = true
+	}
+	if *webProv != "" {
+		cfg.WebSearchProvider = *webProv
+	}
+	if *braveKey != "" {
+		cfg.BraveAPIKey = *braveKey
+	}
+	if len(allowDom) > 0 {
+		cfg.AllowSearchDomain = allowDom
+	}
+	if *webMax > 0 {
+		cfg.WebSearchMaxResult = *webMax
 	}
 
 	tools, _, err := buildTools(cfg, "tools")
@@ -524,6 +618,15 @@ func resolveConfig(configPath, baseURL, apiKey, model, repoRoot, sessionDir stri
 	}
 	if fc.MaxIterations == 0 {
 		fc.MaxIterations = 25
+	}
+	if fc.WebSearchProvider == "" {
+		fc.WebSearchProvider = "brave"
+	}
+	if fc.WebSearchMaxResult == 0 {
+		fc.WebSearchMaxResult = 8
+	}
+	if fc.BraveAPIKey == "" {
+		fc.BraveAPIKey = os.Getenv("BRAVE_SEARCH_API_KEY")
 	}
 	return fc
 }
@@ -606,6 +709,11 @@ func buildTools(cfg FileConfig, sessionID string) (*core.Registry, *session.Stor
 		EnableHTTPGet:        cfg.EnableHTTPGet,
 		AllowedURLPrefix:     cfg.AllowURLPrefix,
 		EnableDuckDB:         cfg.EnableDuckDB,
+		EnableWebSearch:      cfg.EnableWebSearch,
+		WebSearchProvider:    cfg.WebSearchProvider,
+		BraveAPIToken:        cfg.BraveAPIKey,
+		AllowSearchDomain:    cfg.AllowSearchDomain,
+		WebSearchMaxResults:  cfg.WebSearchMaxResult,
 		UserPrompter:         p,
 	})
 

@@ -52,6 +52,14 @@ Print the currently available tools and schemas:
 go run ./cmd/rlmkit tools --repo-root .
 ```
 
+Enable web search (Brave):
+
+```bash
+export BRAVE_SEARCH_API_KEY=...
+go run ./cmd/rlmkit code --repo-root . --base-url http://127.0.0.1:8082/v1 --model auto \
+  --enable-web-search --web-search-provider brave --allow-search-domain github.com --allow-search-domain docs.python.org
+```
+
 ## Safety
 
 By default `run_command` is disabled. Enable it only if you trust the agent and

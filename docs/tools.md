@@ -74,6 +74,21 @@ Safety:
 - Must be enabled (`--enable-http-get` or config).
 - URL must match an allowlisted prefix (`--allow-url-prefix` or config).
 
+### `web_search` (disabled by default)
+Runs web search via a configured provider (currently Brave Search API).
+
+Input:
+- `query` (required)
+- `count` (optional)
+- `freshness` (optional, provider-specific)
+- `country` (optional, provider-specific)
+
+Safety/config:
+- Must be enabled (`--enable-web-search` or config).
+- Provider: `--web-search-provider` (default `brave`).
+- Brave API key via `--brave-api-key` or `BRAVE_SEARCH_API_KEY`.
+- Optional search-domain allowlist via `--allow-search-domain`.
+
 ### `duckdb_query` (disabled by default)
 Runs SQL against a local DuckDB file using the `duckdb` CLI.
 
