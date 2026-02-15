@@ -19,6 +19,64 @@ jobs:
           go-version: "1.22.x"
       - run: go test ./...
 
+  auto_tag:
+    if: github.ref == 'refs/heads/main'
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create next version tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch --tags origin
+
+          # Find latest vMAJOR.MINOR.PATCH tag (defaults to v0.0.0 when none exists).
+          latest="$(git tag -l 'v*' | sort -V | tail -n 1)"
+          if [[ -z "${latest}" ]]; then
+            latest="v0.0.0"
+          fi
+
+          base="${latest#v}"
+          IFS='.' read -r major minor patch <<< "${base}"
+          major="${major:-0}"
+          minor="${minor:-0}"
+          patch="${patch:-0}"
+
+          next="v${major}.${minor}.$((patch + 1))"
+
+          # Best-effort collision handling for concurrent merges.
+          for _ in 1 2 3 4 5; do
+            if git rev-parse -q --verify "refs/tags/${next}" >/dev/null; then
+              patch=$((patch + 1))
+              next="v${major}.${minor}.${patch}"
+              continue
+            fi
+            git tag "${next}" "${GITHUB_SHA}"
+            if git push origin "${next}"; then
+              echo "Created tag ${next}"
+              exit 0
+            fi
+            git tag -d "${next}" || true
+            git fetch --tags origin
+            latest="$(git tag -l 'v*' | sort -V | tail -n 1)"
+            base="${latest#v}"
+            IFS='.' read -r major minor patch <<< "${base}"
+            major="${major:-0}"
+            minor="${minor:-0}"
+            patch="${patch:-0}"
+            next="v${major}.${minor}.$((patch + 1))"
+          done
+
+          echo "Failed to create a unique tag after retries" >&2
+          exit 1
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test]
