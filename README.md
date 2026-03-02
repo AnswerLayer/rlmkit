@@ -2,7 +2,7 @@
 
 Minimal RLM coding-agent toolkit (local models, tool-driven context).
 
-rlmkit uses the RLM pattern (Retrieval-augmented Language Model) for agent state:
+rlmkit uses the RLM pattern (Recursive Language Model) for agent state:
 instead of stuffing the full conversation history into every model call, the
 agent persists turns locally and retrieves prior context via a tool call when
 needed (`get_session_context`).
